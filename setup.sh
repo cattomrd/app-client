@@ -21,9 +21,9 @@ print_error() {
 }
 
 # Verificar si estamos en una Raspberry Pi
-if ! grep -q "Raspberry Pi" /proc/cpuinfo &> /dev/null; then
-    print_warning "Este script está diseñado para Raspberry Pi. Es posible que algunas funciones no trabajen correctamente en otras plataformas."
-fi
+# if ! grep -q "Raspberry Pi" /proc/cpuinfo &> /dev/null; then
+#     print_warning "Este script está diseñado para Raspberry Pi. Es posible que algunas funciones no trabajen correctamente en otras plataformas."
+# fi
 
 # Comprobar que estamos usando Python 3
 PYTHON_VERSION=$(python3 --version 2>&1)
@@ -72,11 +72,11 @@ if [ ! -f ".env" ]; then
         print_error "No se encontró el archivo .env.template. Creando un .env básico..."
         cat > .env << EOL
 # Configuración del cliente de sincronización
-SERVER_URL=http://localhost:8000
-DOWNLOAD_PATH=~/downloads
+SERVER_URL=http://172.19.2.35:8000
+DOWNLOAD_PATH=$WORKING_DIR/downloads
 CHECK_INTERVAL=30
 SERVICE_NAME=videoloop.service
-USERNAME=admin
+USERNAME=user  
 PASSWORD=password
 SYNC_ONLY=0
 DEBUG=0
@@ -88,9 +88,9 @@ else
     print_status "El archivo .env ya existe."
 fi
 
-# Crear servicio systemd si no existe
-SERVICE_FILE="/etc/systemd/system/raspberry-sync.service"
-if [ ! -f "$SERVICE_FILE" ]; then
+# Crear servicio raspberry-sync systemd si no existe
+SERVICE_SYNC="/etc/systemd/system/raspberry-sync.service"
+if [ ! -f "$SERVICE_SYNC" ]; then
     print_status "¿Desea crear un servicio systemd para iniciar automáticamente el cliente? (s/n)"
     read -r create_service
     
@@ -98,7 +98,7 @@ if [ ! -f "$SERVICE_FILE" ]; then
         print_status "Creando servicio systemd..."
         WORKING_DIR=$(pwd)
         
-        sudo tee "$SERVICE_FILE" > /dev/null << EOL
+        sudo tee "$SERVICE_SYNC" > /dev/null << EOL
 [Unit]
 Description=Raspberry Pi Video Sync Client
 After=network.target
@@ -106,14 +106,23 @@ After=network.target
 [Service]
 User=$(whoami)
 WorkingDirectory=$WORKING_DIR
+StandardOutput=journal
+StandardError=journal
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
 ExecStart=$WORKING_DIR/venv/bin/python $WORKING_DIR/main.py
+Restart=always
+Type=simple
+User=pi
+Group=pi
+Environment=PYTHONUNBUFFERED=1
 Restart=on-failure
 RestartSec=5s
 
 [Install]
 WantedBy=multi-user.target
 EOL
-        
+
         sudo systemctl daemon-reload
         print_status "Servicio creado. Para habilitarlo, ejecute:"
         print_status "sudo systemctl enable raspberry-sync.service"
@@ -124,6 +133,171 @@ EOL
 else
     print_status "El servicio systemd ya existe en $SERVICE_FILE"
 fi
+
+
+VIDEOLOOP="/usr/bin/videoloop"
+if [ ! -f "$SERVICE_LOOP" ]; then
+    print_status "¿Desea crear un servicio systemd para iniciar automáticamente el cliente? (s/n)"
+    read -r create_service
+    
+    if [[ "$create_service" =~ ^[Ss]$ ]]; then
+        print_status "Creando servicio systemd..."
+        WORKING_DIR=$(pwd)
+        
+
+    sudo tee "$VIDEOLOOP" > /dev/null << EOL
+
+#!/bin/bash
+# Script avanzado para reproducir videos en bucle
+# Verifica múltiples reproductores y usa el primero disponible
+
+# Obtener directorio del script
+
+#SCRIPT_DIR="/home/pi/app-client/downloads/"
+#SCRIPT_DIR= "$(~/vs/downloads/)"
+#cd "$SCRIPT_DIR" || exit 1
+
+echo "===== Reproductor de Videos ====="
+echo "Directorio:" $WORKING_DIR
+echo "Fecha: $(date)"
+
+ls /home/pi/app-client/downloads/ | grep mp4 > /home/pi/app-client/downloads/playlist.m3u
+# Verificar si existe la playlist m3u
+PLAYLIST_FILE="/home/pi/app-client/downloads/playlist.m3u"
+if [ ! -f "$PLAYLIST_FILE" ]; then
+    echo "Error: $PLAYLIST_FILE no encontrada"
+    exit 1
+fi
+
+# Contar videos en la playlist
+NUM_VIDEOS=$(grep -c . "$PLAYLIST_FILE")
+echo "Encontrados $NUM_VIDEOS videos en la playlist"
+
+# Mostrar contenido de la playlist
+echo "Contenido de $PLAYLIST_FILE:"
+cat "$PLAYLIST_FILE"
+
+# Función para verificar si un comando está disponible
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+# Intentar reproducir con VLC (primera opción)
+if command_exists cvlc || command_exists vlc; then
+    echo "Usando VLC para reproducción..."
+
+    if command_exists cvlc; then
+        echo "Ejecutando: cvlc --loop --no-video-title-show --fullscreen $PLAYLIST_FILE"
+        exec cvlc --loop --no-video-title-show --fullscreen "$PLAYLIST_FILE"
+    else
+        echo "Ejecutando: vlc --loop --no-video-title-show --fullscreen --started-from-file $PLAYLIST_FILE"
+        exec vlc --loop --no-video-title-show --fullscreen --started-from-file "$PLAYLIST_FILE"
+    fi
+
+# Intentar con MPV
+elif command_exists mpv; then
+    echo "Usando MPV para reproducción..."
+    echo "Ejecutando: mpv --fullscreen --loop-playlist=inf $PLAYLIST_FILE"
+    exec mpv --fullscreen --loop-playlist=inf "$PLAYLIST_FILE"
+
+    # Intentar con SMPlayer
+    elif command_exists smplayer; then
+    echo "Usando SMPlayer para reproducción..."
+    echo "Ejecutando: smplayer -fullscreen -loop $PLAYLIST_FILE"
+    exec smplayer -fullscreen -loop "$PLAYLIST_FILE"
+
+    # Intentar con OMXPlayer (Raspberry Pi)
+    elif command_exists omxplayer; then
+    echo "Usando OMXPlayer para reproducción (Raspberry Pi)..."
+    echo "OMXPlayer no soporta archivos m3u directamente, reproduciendo videos individualmente..."
+
+    while true; do
+        while read -r video_path; do
+        # Ignorar líneas vacías
+        if [ -z "$video_path" ]; then
+            continue
+        fi
+
+        echo "Reproduciendo: $video_path"
+        if [ -f "$video_path" ]; then
+            omxplayer -o hdmi --no-osd --no-keys "$video_path"
+        else
+            echo "Advertencia: El archivo $video_path no existe"
+        fi
+
+        # Pequeña pausa entre videos
+        sleep 1
+        done < "$PLAYLIST_FILE"
+
+        echo "Playlist completada, reiniciando..."
+        sleep 2
+    done
+
+# Intentar con MPlayer
+elif command_exists mplayer; then
+    echo "Usando MPlayer para reproducción..."
+    echo "Ejecutando: mplayer -fs -loop 0 -playlist $PLAYLIST_FILE"
+    exec mplayer -fs -loop 0 -playlist "$PLAYLIST_FILE"
+
+else
+    echo "Error: No se encontró ningún reproductor de video compatible"
+    echo "Por favor, instale VLC, MPV, SMPlayer, OMXPlayer o MPlayer"
+    exit 1
+fi
+
+EOL
+
+    sudo chmod +x /usr/bin/videoloop
+    sudo chown pi:pi /usr/bin/videoloop
+
+# Crear servicio raspberry-sync systemd si no existe
+SERVICE_LOOP="/etc/systemd/system/videoloop.service"
+if [ ! -f "$SERVICE_LOOP" ]; then
+    print_status "¿Desea crear un servicio systemd para iniciar automáticamente el cliente? (s/n)"
+    read -r create_service
+    
+    if [[ "$create_service" =~ ^[Ss]$ ]]; then
+        print_status "Creando servicio systemd..."
+        WORKING_DIR=$(pwd)
+        
+        sudo tee "$SERVICE_LOOP" > /dev/null << EOL
+[Unit]
+Description=Video Loop Service
+After=graphical.target
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+Environment=XDG_SESSION_TYPE=wayland
+Environment=QT_QPA_PLATFORM=wayland
+WorkingDirectory=/home/pi
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/videoloop
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target
+
+EOL
+
+        sudo systemctl daemon-reload
+        print_status "Servicio creado. Para habilitarlo, ejecute:"
+        print_status "sudo systemctl enable videoloop.service"
+        print_status "sudo systemctl start videoloop.service"
+    else
+        print_status "No se creó el servicio systemd."
+    fi
+else
+    print_status "El servicio systemd ya existe en $SERVICE_FILE"
+fi
+
 
 print_status "Instalación completada."
 print_status "Para ejecutar el cliente, use: python main.py"
