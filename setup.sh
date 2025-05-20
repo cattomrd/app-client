@@ -7,6 +7,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
+# Definir el directorio de trabajo al inicio
+WORKING_DIR=$(pwd)
+
 # Función para imprimir mensajes de estado
 print_status() {
     echo -e "${GREEN}[INFO]${NC} $1"
@@ -91,12 +94,11 @@ fi
 # Crear servicio raspberry-sync systemd si no existe
 SERVICE_SYNC="/etc/systemd/system/raspberry-sync.service"
 if [ ! -f "$SERVICE_SYNC" ]; then
-    print_status "¿Desea crear un servicio systemd para iniciar automáticamente el cliente? (s/n)"
-    read -r create_service
+    print_status "¿Desea crear un servicio systemd para raspberry-sync? (s/n)"
+    read -r create_sync_service
     
-    if [[ "$create_service" =~ ^[Ss]$ ]]; then
-        print_status "Creando servicio systemd..."
-        WORKING_DIR=$(pwd)
+    if [[ "$create_sync_service" =~ ^[Ss]$ ]]; then
+        print_status "Creando servicio systemd para raspberry-sync..."
         
         sudo tee "$SERVICE_SYNC" > /dev/null << EOL
 [Unit]
@@ -124,62 +126,57 @@ WantedBy=multi-user.target
 EOL
 
         sudo systemctl daemon-reload
-        print_status "Servicio creado. Para habilitarlo, ejecute:"
+        print_status "Servicio raspberry-sync creado. Para habilitarlo, ejecute:"
         print_status "sudo systemctl enable raspberry-sync.service"
         print_status "sudo systemctl start raspberry-sync.service"
     else
-        print_status "No se creó el servicio systemd."
+        print_status "No se creó el servicio systemd para raspberry-sync."
     fi
 else
-    print_status "El servicio systemd ya existe en $SERVICE_FILE"
+    print_status "El servicio systemd para raspberry-sync ya existe en $SERVICE_SYNC"
 fi
 
-
+# Crear script videoloop
 VIDEOLOOP="/usr/bin/videoloop"
-if [ ! -f "$SERVICE_LOOP" ]; then
-    print_status "¿Desea crear un servicio systemd para iniciar automáticamente el cliente? (s/n)"
-    read -r create_service
+if [ ! -f "$VIDEOLOOP" ]; then
+    print_status "¿Desea crear el script videoloop para reproducción de videos? (s/n)"
+    read -r create_videoloop
     
-    if [[ "$create_service" =~ ^[Ss]$ ]]; then
-        print_status "Creando servicio systemd..."
-        WORKING_DIR=$(pwd)
+    if [[ "$create_videoloop" =~ ^[Ss]$ ]]; then
+        print_status "Creando script videoloop..."
         
-
-    sudo tee "$VIDEOLOOP" > /dev/null << EOL
-
+        sudo tee "$VIDEOLOOP" > /dev/null << EOL
 #!/bin/bash
 # Script avanzado para reproducir videos en bucle
 # Verifica múltiples reproductores y usa el primero disponible
 
-# Obtener directorio del script
-
-#SCRIPT_DIR="/home/pi/app-client/downloads/"
-#SCRIPT_DIR= "$(~/vs/downloads/)"
-#cd "$SCRIPT_DIR" || exit 1
-
+# Directorio de descarga de videos
+VIDEO_DIR="/home/pi/app-client/downloads"
 echo "===== Reproductor de Videos ====="
-echo "Directorio:" $WORKING_DIR
-echo "Fecha: $(date)"
+echo "Directorio: \$VIDEO_DIR"
+echo "Fecha: \$(date)"
 
-ls /home/pi/app-client/downloads/ | grep mp4 > /home/pi/app-client/downloads/playlist.m3u
+# Crear playlist
+ls \$VIDEO_DIR | grep mp4 > \$VIDEO_DIR/playlist.m3u
+
 # Verificar si existe la playlist m3u
-PLAYLIST_FILE="/home/pi/app-client/downloads/playlist.m3u"
-if [ ! -f "$PLAYLIST_FILE" ]; then
-    echo "Error: $PLAYLIST_FILE no encontrada"
+PLAYLIST_FILE="\$VIDEO_DIR/playlist.m3u"
+if [ ! -f "\$PLAYLIST_FILE" ]; then
+    echo "Error: \$PLAYLIST_FILE no encontrada"
     exit 1
 fi
 
 # Contar videos en la playlist
-NUM_VIDEOS=$(grep -c . "$PLAYLIST_FILE")
-echo "Encontrados $NUM_VIDEOS videos en la playlist"
+NUM_VIDEOS=\$(grep -c . "\$PLAYLIST_FILE")
+echo "Encontrados \$NUM_VIDEOS videos en la playlist"
 
 # Mostrar contenido de la playlist
-echo "Contenido de $PLAYLIST_FILE:"
-cat "$PLAYLIST_FILE"
+echo "Contenido de \$PLAYLIST_FILE:"
+cat "\$PLAYLIST_FILE"
 
 # Función para verificar si un comando está disponible
 command_exists() {
-    command -v "$1" >/dev/null 2>&1
+    command -v "\$1" >/dev/null 2>&1
 }
 
 # Intentar reproducir con VLC (primera opción)
@@ -187,47 +184,47 @@ if command_exists cvlc || command_exists vlc; then
     echo "Usando VLC para reproducción..."
 
     if command_exists cvlc; then
-        echo "Ejecutando: cvlc --loop --no-video-title-show --fullscreen $PLAYLIST_FILE"
-        exec cvlc --loop --no-video-title-show --fullscreen "$PLAYLIST_FILE"
+        echo "Ejecutando: cvlc --loop --no-video-title-show --fullscreen \$PLAYLIST_FILE"
+        exec cvlc --loop --no-video-title-show --fullscreen "\$PLAYLIST_FILE"
     else
-        echo "Ejecutando: vlc --loop --no-video-title-show --fullscreen --started-from-file $PLAYLIST_FILE"
-        exec vlc --loop --no-video-title-show --fullscreen --started-from-file "$PLAYLIST_FILE"
+        echo "Ejecutando: vlc --loop --no-video-title-show --fullscreen --started-from-file \$PLAYLIST_FILE"
+        exec vlc --loop --no-video-title-show --fullscreen --started-from-file "\$PLAYLIST_FILE"
     fi
 
 # Intentar con MPV
 elif command_exists mpv; then
     echo "Usando MPV para reproducción..."
-    echo "Ejecutando: mpv --fullscreen --loop-playlist=inf $PLAYLIST_FILE"
-    exec mpv --fullscreen --loop-playlist=inf "$PLAYLIST_FILE"
+    echo "Ejecutando: mpv --fullscreen --loop-playlist=inf \$PLAYLIST_FILE"
+    exec mpv --fullscreen --loop-playlist=inf "\$PLAYLIST_FILE"
 
-    # Intentar con SMPlayer
-    elif command_exists smplayer; then
+# Intentar con SMPlayer
+elif command_exists smplayer; then
     echo "Usando SMPlayer para reproducción..."
-    echo "Ejecutando: smplayer -fullscreen -loop $PLAYLIST_FILE"
-    exec smplayer -fullscreen -loop "$PLAYLIST_FILE"
+    echo "Ejecutando: smplayer -fullscreen -loop \$PLAYLIST_FILE"
+    exec smplayer -fullscreen -loop "\$PLAYLIST_FILE"
 
-    # Intentar con OMXPlayer (Raspberry Pi)
-    elif command_exists omxplayer; then
+# Intentar con OMXPlayer (Raspberry Pi)
+elif command_exists omxplayer; then
     echo "Usando OMXPlayer para reproducción (Raspberry Pi)..."
     echo "OMXPlayer no soporta archivos m3u directamente, reproduciendo videos individualmente..."
 
     while true; do
         while read -r video_path; do
-        # Ignorar líneas vacías
-        if [ -z "$video_path" ]; then
-            continue
-        fi
+            # Ignorar líneas vacías
+            if [ -z "\$video_path" ]; then
+                continue
+            fi
 
-        echo "Reproduciendo: $video_path"
-        if [ -f "$video_path" ]; then
-            omxplayer -o hdmi --no-osd --no-keys "$video_path"
-        else
-            echo "Advertencia: El archivo $video_path no existe"
-        fi
+            echo "Reproduciendo: \$video_path"
+            if [ -f "\$video_path" ]; then
+                omxplayer -o hdmi --no-osd --no-keys "\$video_path"
+            else
+                echo "Advertencia: El archivo \$video_path no existe"
+            fi
 
-        # Pequeña pausa entre videos
-        sleep 1
-        done < "$PLAYLIST_FILE"
+            # Pequeña pausa entre videos
+            sleep 1
+        done < "\$PLAYLIST_FILE"
 
         echo "Playlist completada, reiniciando..."
         sleep 2
@@ -236,29 +233,34 @@ elif command_exists mpv; then
 # Intentar con MPlayer
 elif command_exists mplayer; then
     echo "Usando MPlayer para reproducción..."
-    echo "Ejecutando: mplayer -fs -loop 0 -playlist $PLAYLIST_FILE"
-    exec mplayer -fs -loop 0 -playlist "$PLAYLIST_FILE"
+    echo "Ejecutando: mplayer -fs -loop 0 -playlist \$PLAYLIST_FILE"
+    exec mplayer -fs -loop 0 -playlist "\$PLAYLIST_FILE"
 
 else
     echo "Error: No se encontró ningún reproductor de video compatible"
     echo "Por favor, instale VLC, MPV, SMPlayer, OMXPlayer o MPlayer"
     exit 1
 fi
-
 EOL
 
-    sudo chmod +x /usr/bin/videoloop
-    sudo chown pi:pi /usr/bin/videoloop
+        sudo chmod +x "$VIDEOLOOP"
+        sudo chown pi:pi "$VIDEOLOOP"
+        print_status "Script videoloop creado en $VIDEOLOOP"
+    else
+        print_status "No se creó el script videoloop."
+    fi
+else
+    print_status "El script videoloop ya existe en $VIDEOLOOP"
+fi
 
-# Crear servicio raspberry-sync systemd si no existe
+# Crear servicio videoloop systemd si no existe
 SERVICE_LOOP="/etc/systemd/system/videoloop.service"
 if [ ! -f "$SERVICE_LOOP" ]; then
-    print_status "¿Desea crear un servicio systemd para iniciar automáticamente el cliente? (s/n)"
-    read -r create_service
+    print_status "¿Desea crear un servicio systemd para el reproductor de videos? (s/n)"
+    read -r create_loop_service
     
-    if [[ "$create_service" =~ ^[Ss]$ ]]; then
-        print_status "Creando servicio systemd..."
-        WORKING_DIR=$(pwd)
+    if [[ "$create_loop_service" =~ ^[Ss]$ ]]; then
+        print_status "Creando servicio systemd para videoloop..."
         
         sudo tee "$SERVICE_LOOP" > /dev/null << EOL
 [Unit]
@@ -284,20 +286,18 @@ StandardError=journal
 
 [Install]
 WantedBy=graphical.target
-
 EOL
 
         sudo systemctl daemon-reload
-        print_status "Servicio creado. Para habilitarlo, ejecute:"
+        print_status "Servicio videoloop creado. Para habilitarlo, ejecute:"
         print_status "sudo systemctl enable videoloop.service"
         print_status "sudo systemctl start videoloop.service"
     else
-        print_status "No se creó el servicio systemd."
+        print_status "No se creó el servicio systemd para videoloop."
     fi
 else
-    print_status "El servicio systemd ya existe en $SERVICE_FILE"
+    print_status "El servicio systemd para videoloop ya existe en $SERVICE_LOOP"
 fi
-
 
 print_status "Instalación completada."
 print_status "Para ejecutar el cliente, use: python main.py"
