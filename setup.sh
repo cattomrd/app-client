@@ -75,7 +75,7 @@ if [ ! -f ".env" ]; then
         print_error "No se encontró el archivo .env.template. Creando un .env básico..."
         cat > .env << EOL
 # Configuración del cliente de sincronización
-SERVER_URL=http://172.19.2.35:8000
+SERVER_URL=http://ipservidor:8000
 DOWNLOAD_PATH=$WORKING_DIR/downloads
 CHECK_INTERVAL=30
 SERVICE_NAME=videoloop.service
