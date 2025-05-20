@@ -62,7 +62,7 @@ fi
 # Instalar dependencias
 print_status "Instalando dependencias..."
 pip install -U pip
-pip install python-dotenv websockets fastapi uvicorn
+venv/bin/pip install -r requirements.txt
 
 # Crear archivo .env si no existe
 if [ ! -f ".env" ]; then
