@@ -62,7 +62,11 @@ fi
 # Instalar dependencias
 print_status "Instalando dependencias..."
 pip install -U pip
+<<<<<<< HEAD
 venv/bin/pip install -r requirements.txt
+=======
+pip install -r requirements.txt
+>>>>>>> 2e7bc0c (update clien)
 
 # Crear archivo .env si no existe
 if [ ! -f ".env" ]; then

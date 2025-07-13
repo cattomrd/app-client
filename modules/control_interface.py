@@ -1,8 +1,8 @@
 import logging
 import subprocess
 import socket, re
-
-
+import uuid
+import os
 
 logging.basicConfig(
     level=logging.INFO,
@@ -14,35 +14,55 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(socket.gethostname()) 
-def get_interface_mac(interface_name):
+
+
+def get_interface_mac(interface: str = "eth0") -> str:
     """
-    Obtiene la dirección MAC de una interfaz específica
+    Obtiene la dirección MAC de una interfaz de red de forma segura
+    
+    Args:
+        interface: Nombre de la interfaz (eth0, wlan0, etc.)
+    
+    Returns:
+        str: Dirección MAC o string vacío si no se puede obtener
     """
     try:
-        # Método 1: Usar ip
-        result = subprocess.check_output(['ip', 'link', 'show', interface_name]).decode()
-        mac_match = re.search(r'link/ether\s+([0-9a-f:]{17})', result)
-        if mac_match:
-            return mac_match.group(1)
+        # Método 1: Leer desde /sys/class/net
+        mac_file = f"/sys/class/net/{interface}/address"
+        if os.path.exists(mac_file):
+            with open(mac_file, 'r') as f:
+                mac = f.read().strip()
+                if mac and mac != "00:00:00:00:00:00":
+                    return mac.lower()
         
-        # Método 2: Leer desde /sys
-        try:
-            with open(f'/sys/class/net/{interface_name}/address', 'r') as f:
-                return f.read().strip()
-        except:
-            pass
+        # Método 2: Usar comando ip
+        result = subprocess.run(['ip', 'link', 'show', interface], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            for line in result.stdout.split('\n'):
+                if 'link/ether' in line:
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        mac = parts[1]
+                        if mac and mac != "00:00:00:00:00:00":
+                            return mac.upper()
         
-        # Método 3: Usar ifconfig
-        result = subprocess.check_output(['ifconfig', interface_name]).decode()
-        mac_match = re.search(r'ether\s+([0-9a-f:]{17})', result)
-        if mac_match:
-            return mac_match.group(1)
-            
-        return None
+        # Método 3: Usar ifconfig (fallback)
+        result = subprocess.run(['ifconfig', interface], 
+                              capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            import re
+            mac_match = re.search(r'([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})', result.stdout)
+            if mac_match:
+                mac = mac_match.group(0)
+                if mac and mac != "00:00:00:00:00:00":
+                    return mac.upper()
+                    
     except Exception as e:
-        logger.error(f"Error al obtener MAC de {interface_name}: {str(e)}")
-        return None
+        logger.warning(f"Error al obtener MAC de {interface}: {e}")
     
+    # Retornar string vacío por defecto (nunca None)
+    return ""
 
 
 
@@ -61,7 +81,7 @@ def get_device_id():
     return mac.replace(":", "")
 
 
-def get_interface_ip(interface_name):
+def get_interface_ip(interface_name) -> str:
     """
     Obtiene la dirección IP de una interfaz específica
     """
@@ -89,3 +109,98 @@ def get_interface_ip(interface_name):
     
     return None
 
+def get_tienda(ip):
+    """Versión compacta que retorna diferentes códigos según los primeros octetos de la IP"""
+    if ip.startswith("172.19.14."):
+        return "SDQ"
+    if ip.startswith("192.168.36"):
+        return "SDQ"
+    elif ip.startswith("172.30.42."):
+        return "STI"
+    elif ip.startswith("172.30.42."):  # Nota: Esto es igual al anterior, ¿es correcto?
+        return "PUJ"
+    elif ip.startswith("172.50.42."):
+        return "LRM"
+    else:
+        return None
+
+
+
+def get_device_model() -> str:
+    """
+    Obtiene el modelo del dispositivo de forma segura
+    
+    Returns:
+        str: Modelo del dispositivo o string vacío si no se puede determinar
+    """
+    try:
+        # Intentar obtener el modelo desde /proc/device-tree/model (Raspberry Pi)
+        if os.path.exists('/proc/device-tree/model'):
+            with open('/proc/device-tree/model', 'r') as f:
+                model = f.read().strip('\x00').strip()
+                if model:
+                    return model
+        
+        # Intentar obtener desde /proc/cpuinfo
+        if os.path.exists('/proc/cpuinfo'):
+            with open('/proc/cpuinfo', 'r') as f:
+                for line in f:
+                    if line.startswith('Model'):
+                        model = line.split(':', 1)[1].strip()
+                        if model:
+                            return model
+                    elif line.startswith('Hardware'):
+                        hardware = line.split(':', 1)[1].strip()
+                        if hardware:
+                            return f"Hardware: {hardware}"
+        
+        # Fallback a platform.machine()
+        machine = platform.machine()
+        if machine:
+            return f"Platform: {machine}"
+            
+    except Exception as e:
+        logger.warning(f"Error al obtener modelo del dispositivo: {e}")
+    
+    # Retornar string vacío por defecto (nunca None)
+    return ""
+
+def get_cpu_temperature():
+    """Obtiene la temperatura de la CPU"""
+    try:
+        with open('/sys/class/thermal/thermal_zone0/temp', 'r') as f:
+            temp = int(f.read()) / 1000
+            return round(temp, 1)
+    except:
+        return 0.0
+
+def get_memory_usage():
+    """Obtiene el porcentaje de uso de memoria"""
+    try:
+        with open('/proc/meminfo', 'r') as f:
+            lines = f.readlines()
+            
+        mem_total = mem_free = mem_available = 0
+        for line in lines:
+            if line.startswith('MemTotal:'):
+                mem_total = int(line.split()[1])
+            elif line.startswith('MemFree:'):
+                mem_free = int(line.split()[1])
+            elif line.startswith('MemAvailable:'):
+                mem_available = int(line.split()[1])
+        
+        if mem_total > 0:
+            used = mem_total - (mem_available if mem_available > 0 else mem_free)
+            return round((used / mem_total) * 100, 1)
+    except:
+        pass
+    return 0.0
+
+def get_disk_usage():
+    """Obtiene el porcentaje de uso del disco"""
+    try:
+        import shutil
+        total, used, free = shutil.disk_usage('/')
+        return round((used / total) * 100, 1)
+    except:
+        return 0.0

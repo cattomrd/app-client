@@ -33,26 +33,13 @@ def check_service(service_name: str) -> dict:
         if service_name in ["videoloop", "kiosk"]:
             status = "running" if status == "up" else "stopped"
         
-        # Obtener puerto para servicios comunes
-        if service_name == "nginx" and status == "up":
-            for conn in psutil.net_connections(kind='inet'):
-                if conn.status == 'LISTEN' and conn.laddr.port in [80, 443]:
-                    port = conn.laddr.port
-                    break
-        elif service_name == "mysql" and status == "up":
-            for conn in psutil.net_connections(kind='inet'):
-                if conn.status == 'LISTEN' and conn.laddr.port == 3306:
-                    port = conn.laddr.port
-                    break
     except Exception as e:
         logger.error(f"Error al verificar servicio {service_name}: {str(e)}")
         status = "unknown"
 
     return {
         "name": service_name,
-        "status": status,
-        "port": port,
-        "additional_info": additional_info
+        "status": status
     }
     
 

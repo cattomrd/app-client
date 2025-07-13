@@ -11,7 +11,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('/var/log/raspberry_client.log'),
+        logging.FileHandler('raspberry_client.log'),
         logging.StreamHandler()
     ]
 )

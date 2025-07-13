@@ -178,3 +178,8 @@ cython_debug/
 *.mp4
 ## DB
 *.db
+
+*.crt
+*.ca
+*.key
+*.pem   
