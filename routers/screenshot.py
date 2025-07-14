@@ -53,7 +53,22 @@ async def capture_screenshot():
             capture_success = True
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
             logger.warning(f"Error al capturar con grim: {e}")
-        
+            
+        try:
+            logger.info("Intentando capturar con xfce4-screenshooter")
+            subprocess.run([
+            "xfce4-screenshooter",
+            "--display=:0",
+            "-f",
+            "-s",
+            "/home/pi/app-client/temp/screenshot_tmp.png"
+            ], check=True)
+            logger.info("Captura con xfce4-screenshooter exitosa")
+            capture_success = True
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logger.warning(f"Error al capturar con xfce4-screenshooter: {e}")
+            
+
         # Si grim falló, intentar con otras herramientas
         if not capture_success:
             try:
