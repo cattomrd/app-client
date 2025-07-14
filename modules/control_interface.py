@@ -3,6 +3,7 @@ import subprocess
 import socket, re
 import uuid
 import os
+import platform
 
 logging.basicConfig(
     level=logging.INFO,
@@ -110,18 +111,32 @@ def get_interface_ip(interface_name) -> str:
     return None
 
 def get_tienda(ip):
-    """Versión compacta que retorna diferentes códigos según los primeros octetos de la IP"""
+    """
+    Versión compacta que retorna diferentes códigos según los primeros octetos de la IP
+    
+    Args:
+        ip: Dirección IP (puede ser None)
+    
+    Returns:
+        str o None: Código de tienda correspondiente o None si no se puede determinar
+    """
+    # Verificar que ip no sea None antes de usar startswith()
+    if ip is None:
+        logger.warning("IP es None, no se puede determinar la tienda")
+        return None
+    
     if ip.startswith("172.19.14."):
         return "SDQ"
-    if ip.startswith("192.168.36"):
+    elif ip.startswith("192.168.36"):
         return "SDQ"
     elif ip.startswith("172.30.42."):
         return "STI"
-    elif ip.startswith("172.30.42."):  # Nota: Esto es igual al anterior, ¿es correcto?
+    elif ip.startswith("172.30.43."):  # Corregido: era duplicado
         return "PUJ"
     elif ip.startswith("172.50.42."):
         return "LRM"
     else:
+        logger.info(f"IP {ip} no coincide con ninguna tienda conocida")
         return None
 
 
