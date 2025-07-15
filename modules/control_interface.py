@@ -14,16 +14,16 @@ logging.basicConfig(
     ]
 )
 
-logger = logging.getLogger(socket.gethostname()) 
+logger = logging.getLogger(socket.gethostname())
 
 
 def get_interface_mac(interface: str = "eth0") -> str:
     """
     Obtiene la dirección MAC de una interfaz de red de forma segura
-    
+
     Args:
         interface: Nombre de la interfaz (eth0, wlan0, etc.)
-    
+
     Returns:
         str: Dirección MAC o string vacío si no se puede obtener
     """
@@ -35,9 +35,9 @@ def get_interface_mac(interface: str = "eth0") -> str:
                 mac = f.read().strip()
                 if mac and mac != "00:00:00:00:00:00":
                     return mac.lower()
-        
+
         # Método 2: Usar comando ip
-        result = subprocess.run(['ip', 'link', 'show', interface], 
+        result = subprocess.run(['ip', 'link', 'show', interface],
                               capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             for line in result.stdout.split('\n'):
@@ -47,9 +47,9 @@ def get_interface_mac(interface: str = "eth0") -> str:
                         mac = parts[1]
                         if mac and mac != "00:00:00:00:00:00":
                             return mac.upper()
-        
+
         # Método 3: Usar ifconfig (fallback)
-        result = subprocess.run(['ifconfig', interface], 
+        result = subprocess.run(['ifconfig', interface],
                               capture_output=True, text=True, timeout=5)
         if result.returncode == 0:
             import re
@@ -58,10 +58,10 @@ def get_interface_mac(interface: str = "eth0") -> str:
                 mac = mac_match.group(0)
                 if mac and mac != "00:00:00:00:00:00":
                     return mac.upper()
-                    
+
     except Exception as e:
         logger.warning(f"Error al obtener MAC de {interface}: {e}")
-    
+
     # Retornar string vacío por defecto (nunca None)
     return ""
 
@@ -78,7 +78,7 @@ def get_device_id():
         if not mac:
             logger.warning("No se pudo obtener MAC de ninguna interfaz, generando ID único")
             return f"unknown-{str(uuid.uuid4())[:8]}"
-    
+
     return mac.replace(":", "")
 
 
@@ -107,16 +107,16 @@ def get_interface_ip(interface_name) -> str:
         logger.error(f"Error al obtener IP de {interface_name}: Formato inesperado")
     except Exception as e:
         logger.error(f"Error al obtener IP de {interface_name}: {str(e)}")
-    
+
     return None
 
 def get_tienda(ip):
     """
     Versión compacta que retorna diferentes códigos según los primeros octetos de la IP
-    
+
     Args:
         ip: Dirección IP (puede ser None)
-    
+
     Returns:
         str o None: Código de tienda correspondiente o None si no se puede determinar
     """
@@ -124,7 +124,7 @@ def get_tienda(ip):
     if ip is None:
         logger.warning("IP es None, no se puede determinar la tienda")
         return None
-    
+
     if ip.startswith("172.19.14."):
         return "SDQ"
     elif ip.startswith("192.168.36"):
@@ -140,59 +140,43 @@ def get_tienda(ip):
         return None
 
 
+
 def get_device_model() -> str:
     """
-    Obtiene el modelo del dispositivo de forma segura.
-    Primero intenta detectar Raspberry Pi, y si no lo logra, intenta detectar Orange Pi.
+    Obtiene el modelo del dispositivo de forma segura
 
     Returns:
         str: Modelo del dispositivo o string vacío si no se puede determinar
     """
-    # Variable para almacenar el modelo detectado
-    model = ""
+    try:
+        # Intentar obtener el modelo desde /proc/device-tree/model (Raspberry Pi)
+        if os.path.exists('/proc/device-tree/model'):
+            with open('/proc/device-tree/model', 'r') as f:
+                model = f.read().strip('\x00').strip()
+                if model:
+                    return model
 
-    # Intentar obtener el modelo desde /proc/device-tree/model (Raspberry Pi)
-    if os.path.exists('/proc/device-tree/model'):
-        with open('/proc/device-tree/model', 'r') as f:
-            model = f.read().strip('\x00').strip()
-            if model:
-                return model
-
-    # Intentar obtener desde /proc/cpuinfo
-    if os.path.exists('/proc/cpuinfo'):
-        with open('/proc/cpuinfo', 'r') as f:
-            cpuinfo = f.read()
-
-            # Detectar Raspberry Pi
-            if 'Raspberry Pi' in cpuinfo:
-                for line in cpuinfo.splitlines():
+        # Intentar obtener desde /proc/cpuinfo
+        if os.path.exists('/proc/cpuinfo'):
+            with open('/proc/cpuinfo', 'r') as f:
+                for line in f:
                     if line.startswith('Model'):
                         model = line.split(':', 1)[1].strip()
                         if model:
                             return model
-            
-            # Detectar Orange Pi
-            elif 'H3' in cpuinfo or 'H2+' in cpuinfo or 'Orange Pi' in cpuinfo:
-                for line in cpuinfo.splitlines():
-                    if line.startswith('Hardware'):
-                        model = line.split(':', 1)[1].strip()
-                        if model:
-                            return f"Orange Pi ({model})"
-                    elif line.startswith('Model'):
-                        model = line.split(':', 1)[1].strip()
-                        if model:
-                            return f"Orange Pi ({model})"
+                    elif line.startswith('Hardware'):
+                        hardware = line.split(':', 1)[1].strip()
+                        if hardware:
+                            return f"Hardware: {hardware}"
 
-    # Fallback a platform.machine()
-    machine = platform.machine()
-    if machine:
-        return f"Platform: {machine}"
+        # Fallback a platform.machine()
+        machine = platform.machine()
+        if machine:
+            return f"Platform: {machine}"
 
-    return ""
-            
     except Exception as e:
         logger.warning(f"Error al obtener modelo del dispositivo: {e}")
-    
+
     # Retornar string vacío por defecto (nunca None)
     return ""
 
@@ -210,7 +194,7 @@ def get_memory_usage():
     try:
         with open('/proc/meminfo', 'r') as f:
             lines = f.readlines()
-            
+
         mem_total = mem_free = mem_available = 0
         for line in lines:
             if line.startswith('MemTotal:'):
@@ -219,7 +203,7 @@ def get_memory_usage():
                 mem_free = int(line.split()[1])
             elif line.startswith('MemAvailable:'):
                 mem_available = int(line.split()[1])
-        
+
         if mem_total > 0:
             used = mem_total - (mem_available if mem_available > 0 else mem_free)
             return round((used / mem_total) * 100, 1)
