@@ -140,39 +140,55 @@ def get_tienda(ip):
         return None
 
 
-
 def get_device_model() -> str:
     """
-    Obtiene el modelo del dispositivo de forma segura
-    
+    Obtiene el modelo del dispositivo de forma segura.
+    Primero intenta detectar Raspberry Pi, y si no lo logra, intenta detectar Orange Pi.
+
     Returns:
         str: Modelo del dispositivo o string vacío si no se puede determinar
     """
-    try:
-        # Intentar obtener el modelo desde /proc/device-tree/model (Raspberry Pi)
-        if os.path.exists('/proc/device-tree/model'):
-            with open('/proc/device-tree/model', 'r') as f:
-                model = f.read().strip('\x00').strip()
-                if model:
-                    return model
-        
-        # Intentar obtener desde /proc/cpuinfo
-        if os.path.exists('/proc/cpuinfo'):
-            with open('/proc/cpuinfo', 'r') as f:
-                for line in f:
+    # Variable para almacenar el modelo detectado
+    model = ""
+
+    # Intentar obtener el modelo desde /proc/device-tree/model (Raspberry Pi)
+    if os.path.exists('/proc/device-tree/model'):
+        with open('/proc/device-tree/model', 'r') as f:
+            model = f.read().strip('\x00').strip()
+            if model:
+                return model
+
+    # Intentar obtener desde /proc/cpuinfo
+    if os.path.exists('/proc/cpuinfo'):
+        with open('/proc/cpuinfo', 'r') as f:
+            cpuinfo = f.read()
+
+            # Detectar Raspberry Pi
+            if 'Raspberry Pi' in cpuinfo:
+                for line in cpuinfo.splitlines():
                     if line.startswith('Model'):
                         model = line.split(':', 1)[1].strip()
                         if model:
                             return model
-                    elif line.startswith('Hardware'):
-                        hardware = line.split(':', 1)[1].strip()
-                        if hardware:
-                            return f"Hardware: {hardware}"
-        
-        # Fallback a platform.machine()
-        machine = platform.machine()
-        if machine:
-            return f"Platform: {machine}"
+            
+            # Detectar Orange Pi
+            elif 'H3' in cpuinfo or 'H2+' in cpuinfo or 'Orange Pi' in cpuinfo:
+                for line in cpuinfo.splitlines():
+                    if line.startswith('Hardware'):
+                        model = line.split(':', 1)[1].strip()
+                        if model:
+                            return f"Orange Pi ({model})"
+                    elif line.startswith('Model'):
+                        model = line.split(':', 1)[1].strip()
+                        if model:
+                            return f"Orange Pi ({model})"
+
+    # Fallback a platform.machine()
+    machine = platform.machine()
+    if machine:
+        return f"Platform: {machine}"
+
+    return ""
             
     except Exception as e:
         logger.warning(f"Error al obtener modelo del dispositivo: {e}")
