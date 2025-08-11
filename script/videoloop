@@ -1,0 +1,101 @@
+#!/bin/bash
+# Script avanzado para reproducir videos en bucle
+# Verifica m▒ltiples reproductores y usa el primero disponible
+
+echo "===== Reproductor de Videos ====="
+DIRECTORY="/home/pi/app-client/downloads"
+VIDEOS=".mp4"
+
+# Crear playlist m3u
+rm -f "$DIRECTORY/playlist.m3u"
+for i in $(ls "$DIRECTORY" | grep "$VIDEOS"); do
+    echo "$DIRECTORY/$i" >> "$DIRECTORY/playlist.m3u"
+done
+
+# Verificar si existe la playlist m3u
+PLAYLIST_FILE="$DIRECTORY/playlist.m3u"
+if [ ! -f "$PLAYLIST_FILE" ]; then
+    echo "Error: $PLAYLIST_FILE no encontrada"
+    exit 1
+fi
+
+# Contar videos en la playlist
+NUM_VIDEOS=$(grep -c . "$PLAYLIST_FILE")
+echo "Encontrados $NUM_VIDEOS videos en la playlist"
+
+# Mostrar contenido de la playlist
+echo "Contenido de $PLAYLIST_FILE:"
+cat "$PLAYLIST_FILE"
+
+# Funci▒n para verificar si un comando est▒ disponible
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+
+# Intentar con MPV
+#if command_exists mpv; then
+#    echo "Usando MPV para reproducción..."
+#    echo "Ejecutando: mpv --fullscreen --loop-playlist=inf $PLAYLIST_FILE"
+#    exec mpv --fullscreen --loop-playlist=inf "$PLAYLIST_FILE"
+
+
+
+# Intentar reproducir con VLC (primera opcion)
+if command_exists cvlc || command_exists vlc; then
+    echo "Usando VLC para reproducci▒n..."
+
+    if command_exists cvlc; then
+        echo "Ejecutando: cvlc --loop --no-video-title-show --fullscreen $PLAYLIST_FILE"
+        exec cvlc --loop --no-video-title-show --fullscreen "$PLAYLIST_FILE"
+    else
+        echo "Ejecutando: vlc --loop --no-video-title-show --fullscreen --started-from-file $PLAYLIST_FILE"
+        exec vlc --loop --no-video-title-show --fullscreen --started-from-file "$PLAYLIST_FILE"
+
+   fi
+
+# Intentar con SMPlayer
+elif command_exists smplayer; then
+    echo "Usando SMPlayer para reproducci▒n..."
+    echo "Ejecutando: smplayer -fullscreen -loop $PLAYLIST_FILE"
+    exec smplayer -fullscreen -loop "$PLAYLIST_FILE"
+
+# Intentar con OMXPlayer (Raspberry Pi)
+elif command_exists omxplayer; then
+    echo "Usando OMXPlayer para reproducci▒n (Raspberry Pi)..."
+    echo "OMXPlayer no soporta archivos m3u directamente, reproduciendo videos individualmente..."
+
+    while true; do
+        while read -r video_path; do
+            # Ignorar l▒neas vac▒as
+            if [ -z "$video_path" ]; then
+                continue
+            fi
+
+            echo "Reproduciendo: $video_path"
+            if [ -f "$video_path" ]; then
+                omxplayer -o hdmi --no-osd --no-keys "$video_path"
+            else
+                echo "Advertencia: El archivo $video_path no existe"
+            fi
+
+            # Peque▒a pausa entre videos
+            sleep 1
+        done < "$PLAYLIST_FILE"
+
+        echo "Playlist completada, reiniciando..."
+        sleep 2
+    done
+
+# Intentar con MPlayer
+elif command_exists mplayer; then
+    echo "Usando MPlayer para reproducci▒n..."
+    echo "Ejecutando: mplayer -fs -loop 0 -playlist $PLAYLIST_FILE"
+    exec mplayer -fs -loop 0 -playlist "$PLAYLIST_FILE"
+
+else
+    echo "Error: No se encontr▒ ning▒n reproductor de video compatible"
+    echo "Por favor, instale VLC, MPV, SMPlayer, OMXPlayer o MPlayer"
+    exit 1
+fi
+ 
