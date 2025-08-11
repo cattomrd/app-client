@@ -1,0 +1,23 @@
+[Unit]
+Description=Raspberry Pi Video Sync Client
+After=network.target
+
+[Service]
+User=root
+WorkingDirectory=/home/pi/app-client
+StandardOutput=journal
+StandardError=journal
+#Environment=DISPLAY=:0
+Environment=WAYLAND_DISPLAY=wayland-0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/home/pi/app-client/venv/bin/python /home/pi/app-client/main.py
+Restart=always
+Type=simple
+User=pi
+Group=pi
+Environment=PYTHONUNBUFFERED=1
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
