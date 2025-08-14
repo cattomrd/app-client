@@ -84,6 +84,25 @@ logging.basicConfig(
 
 logger = logging.getLogger(socket.gethostname())
 
+
+def get_active_service():
+    """Retorna el primer servicio activo y habilitado."""
+    services = ["videoloop.service", "kiosk.service"]
+    for service in services:
+        active = subprocess.run(
+            ["systemctl", "is-active", service],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        enabled = subprocess.run(
+            ["systemctl", "is-enabled", service],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        if active.returncode == 0 and enabled.returncode == 0:
+            return service
+    return None
+
 # Clase para manejar la autenticación basada en cookies para clientes Raspberry Pi
 class CookieAuthManager:
     """Clase para manejar la autenticación basada en cookies del cliente Raspberry Pi"""
@@ -549,33 +568,37 @@ class VideoDownloaderClient:
     
     async def restart_videoloop_service(self):
         """Reinicia el servicio de reproducción de video"""
-        logger.info(f"Reiniciando servicio {self.service_name}...")
-        
+        service_name = get_active_service()
+        if not service_name:
+            logger.warning("No se detectó ningún servicio activo y habilitado")
+            service_name = getattr(self, "service_name", SERVICE_NAME)
+        logger.info(f"Reiniciando servicio {service_name}...")
+
         try:
             # Verificar si el servicio existe
-            check_cmd = ["systemctl", "status", self.service_name]
+            check_cmd = ["systemctl", "status", service_name]
             check_result = subprocess.run(check_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
+
             if check_result.returncode == 4:  # 4 indica que el servicio no existe
-                logger.warning(f"El servicio {self.service_name} no existe")
+                logger.warning(f"El servicio {service_name} no existe")
                 return
-            
+
             # Reiniciar el servicio
-            restart_cmd = ["sudo", "systemctl", "restart", self.service_name]
+            restart_cmd = ["sudo", "systemctl", "restart", service_name]
             restart_result = subprocess.run(restart_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            
+
             if restart_result.returncode == 0:
-                logger.info(f"Servicio {self.service_name} reiniciado correctamente")
+                logger.info(f"Servicio {service_name} reiniciado correctamente")
             else:
                 error = restart_result.stderr.decode('utf-8', errors='ignore')
                 logger.error(f"Error al reiniciar el servicio: {error}")
-                
+
                 # Intento alternativo con sudo explícito por si hay problemas de permisos
                 if "permission denied" in error.lower():
                     logger.info("Intentando reiniciar con sudo explícito...")
-                    os.system(f"echo 'Reiniciando servicio desde script' | sudo -S systemctl restart {self.service_name}")
+                    os.system(f"echo 'Reiniciando servicio desde script' | sudo -S systemctl restart {service_name}")
                     logger.info("Comando de reinicio alternativo ejecutado")
-        
+
         except Exception as e:
             logger.error(f"Error al intentar reiniciar el servicio: {e}")
     
